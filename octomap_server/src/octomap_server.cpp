@@ -554,7 +554,7 @@ void OctomapServer::insertScan(
         updateMaxKey(key, update_bbox_max_);
 
 #ifdef COLOR_OCTOMAP_SERVER  // NB: Only read and interpret color if it's an occupied node
-        octree_->averageNodeColor(it->x, it->y, it->z, /*r=*/ it->r, /*g=*/ it->g, /*b=*/ it->b);
+        octree_->setNodeColor(it->x, it->y, it->z, /*r=*/ it->r, /*g=*/ it->g, /*b=*/ it->b);
 #endif
       }
     } else {  // ray longer than maxrange
@@ -586,6 +586,29 @@ void OctomapServer::insertScan(
     octree_->updateNode(*it, true);
   }
 
+  // shan clear when sensor passing through the region
+  octomap::KeySet sensor_free_cells;
+  for (int i = -2; i <= 2; i++)
+  {
+    for (int j = -2; j <= 2; j++)
+    {
+      const octomap::point3d sensor_st = sensor_origin + octomap::point3d(i*res_, j*res_, 0.0);
+      const octomap::point3d sensor_ed = sensor_st + octomap::point3d(0.0, 0.0, point_cloud_max_z_);
+      octomap::KeyRay sensor_key_ray;
+      octree_->computeRayKeys(sensor_st, sensor_ed, sensor_key_ray);
+
+      sensor_free_cells.insert(sensor_key_ray.begin(), sensor_key_ray.end());
+    }
+  }
+
+  // mark free cells only if not seen occupied in this cloud
+  for (auto it = sensor_free_cells.begin(), end = sensor_free_cells.end(); it != end; ++it) {
+    if (occupied_cells.find(*it) == occupied_cells.end()) {
+      octree_->updateNode(*it, octree_->getClampingThresMinLog());
+    }
+  }
+  //shan
+  
   // TODO(someone): eval lazy+updateInner vs. proper insertion
   // non-lazy by default (updateInnerOccupancy() too slow for large maps)
   // octree_->updateInnerOccupancy();
@@ -1499,7 +1522,7 @@ using ColorOctomapServer = OctomapServer;
 
 #include <rclcpp_components/register_node_macro.hpp>
 #ifdef COLOR_OCTOMAP_SERVER
-RCLCPP_COMPONENTS_REGISTER_NODE(octomap_server::ColorOctomapServer)
+RCLCPP_COMPONENTS_REGISTER_NODE(octomap_server::OctomapServer)
 #else
 RCLCPP_COMPONENTS_REGISTER_NODE(octomap_server::OctomapServer)
 #endif
